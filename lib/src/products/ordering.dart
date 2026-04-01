@@ -232,6 +232,41 @@ class OrderingListResponse<T> {
   });
 }
 
+// ── Key validation ────────────────────────────────────────────────────────────
+
+enum KeyValidationStatus {
+  valid,
+  invalidKey,       // 401 — key not found or revoked
+  noSubscription,   // 403 code: subscription_required
+  freePlanBlocked,  // 403 code: free_plan_not_supported
+  featureNotInPlan, // 403 code: ordering_app_not_in_plan
+  networkError,     // connection failure
+}
+
+class KeyValidationResult {
+  final bool valid;
+  final String subscriberId;
+  final String subStatus;
+  final String subPlan;
+
+  const KeyValidationResult({
+    required this.valid,
+    required this.subscriberId,
+    required this.subStatus,
+    required this.subPlan,
+  });
+
+  factory KeyValidationResult.fromJson(Map<String, dynamic> j) {
+    final sub = j['subscription'] as Map<String, dynamic>?;
+    return KeyValidationResult(
+      valid:        j['valid'] as bool? ?? false,
+      subscriberId: j['subscriber_id']?.toString() ?? '',
+      subStatus:    sub?['status']?.toString() ?? '',
+      subPlan:      sub?['plan']?.toString() ?? '',
+    );
+  }
+}
+
 // ── Client ────────────────────────────────────────────────────────────────────
 
 /// Customer-facing ordering API client.
@@ -249,6 +284,24 @@ class OrderingClient {
   final void Function(RateLimitInfo) _onRateLimit;
 
   OrderingClient(this._http, this._onRateLimit);
+
+  // ── Startup validation ───────────────────────────────────────────────────────
+
+  /// Validates the API key and POS subscription on app startup.
+  ///
+  /// Throws [XebokiException] with meaningful codes on failure:
+  ///   status=401  → key invalid / revoked
+  ///   status=403  → subscription_required | free_plan_not_supported | ordering_app_not_in_plan
+  Future<KeyValidationResult> validateApiKey() async {
+    final (data, rl) = await _http.request(
+      'GET',
+      '/v1/pos/validate',
+      fromJson: (j) =>
+          KeyValidationResult.fromJson(j as Map<String, dynamic>),
+    );
+    _onRateLimit(rl);
+    return data;
+  }
 
   // ── Catalog ─────────────────────────────────────────────────────────────────
 
