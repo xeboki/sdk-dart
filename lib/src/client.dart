@@ -6,6 +6,7 @@ import 'products/removebg.dart';
 import 'products/analytics.dart';
 import 'products/account.dart';
 import 'products/launchpad.dart';
+import 'products/ordering.dart';
 
 export 'error.dart';
 export 'http.dart' show RateLimitInfo;
@@ -16,16 +17,25 @@ export 'products/removebg.dart';
 export 'products/analytics.dart';
 export 'products/account.dart';
 export 'products/launchpad.dart';
+export 'products/ordering.dart';
 
 /// Main entry point for the Xeboki SDK.
 ///
 /// ```dart
 /// final xeboki = XebokiClient(apiKey: 'xbk_live_...');
+///
+/// // POS admin
 /// final orders = await xeboki.pos.listOrders(limit: 20);
+///
+/// // Customer-facing ordering app
+/// final products = await xeboki.ordering.listProducts(limit: 20);
+/// final auth = await xeboki.ordering.loginCustomer(email: '...', password: '...');
+///
 /// print(xeboki.lastRateLimit?.remaining);
 /// ```
 class XebokiClient {
   late final PosClient pos;
+  late final OrderingClient ordering;
   late final ChatClient chat;
   late final LinkClient link;
   late final RemoveBGClient removebg;
@@ -45,6 +55,7 @@ class XebokiClient {
   }) : _http = XebokiHttpClient(apiKey: apiKey, baseUrl: baseUrl) {
     void onRateLimit(RateLimitInfo info) => _lastRateLimit = info;
     pos       = PosClient(_http, onRateLimit);
+    ordering  = OrderingClient(_http, onRateLimit);
     chat      = ChatClient(_http, onRateLimit);
     link      = LinkClient(_http, onRateLimit);
     removebg  = RemoveBGClient(_http, onRateLimit);
