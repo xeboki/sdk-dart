@@ -50,7 +50,7 @@ void main() async {
 
 ## Authentication
 
-Generate API keys from your [Xeboki developer dashboard](https://developers.xeboki.com/dashboard).
+Generate API keys from your [Xeboki account dashboard](https://account.xeboki.com).
 
 | Key prefix     | Environment |
 |----------------|-------------|
