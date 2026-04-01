@@ -78,31 +78,53 @@ final xeboki = XebokiClient(
 
 ### `pos` — Point of Sale
 
-Manage orders, products, inventory, customers, and sales reports.
+Build custom ordering apps, mobile storefronts, kiosk interfaces, and integrations on top of any subscriber's POS data.
+
+#### Catalog
+
+```dart
+// List active products
+final products = await xeboki.pos.listProducts(
+  locationId: 'loc_abc',
+  categoryId: 'cat_drinks',
+  isActive:   true,
+  search:     'espresso',
+  limit:      100,
+);
+
+// Get a single product
+final product = await xeboki.pos.getProduct('prod_abc');
+print('${product.name}: \$${product.price}');
+
+// List categories
+final categories = await xeboki.pos.listCategories(
+  locationId: 'loc_abc',
+  isActive:   true,
+);
+```
 
 #### Orders
 
 ```dart
-// List orders with filters
+// List orders
 final result = await xeboki.pos.listOrders(
   limit:      50,
   offset:     0,
-  status:     'completed',
+  status:     'confirmed',  // pending|confirmed|processing|ready|completed|cancelled
   locationId: 'loc_abc',
   startDate:  '2026-01-01',
   endDate:    '2026-03-31',
 );
-// result.data: List<Order>
-// result.total: int
+// result.data: List<Order>, result.total: int
 
 // Get a single order
 final order = await xeboki.pos.getOrder('ord_abc123');
-print('${order.orderNumber}: \$${order.total}');
+print('${order.orderNumber}: \$${order.total}, paid: \$${order.paidTotal}');
 
-// Create an order
+// Create an order — inventory atomically reserved on create
 final newOrder = await xeboki.pos.createOrder(
-  locationId:    'loc_abc',
-  paymentMethod: 'cash',
+  locationId:     'loc_abc',
+  orderType:      'pickup',          // pickup|delivery|dine_in|takeaway
   items: [
     OrderItemRequest(productId: 'prod_1', quantity: 2),
     OrderItemRequest(
@@ -111,55 +133,174 @@ final newOrder = await xeboki.pos.createOrder(
       modifiers: [ModifierRequest(modifierId: 'mod_oat')],
     ),
   ],
-  customerId: 'cust_xyz',
-  discount:   5.00,
-  notes:      'No ice please',
+  customerId:     'cust_xyz',
+  reference:      'web-order-991',   // your external order ID (idempotency)
+  notes:          'No ice please',
+  tableId:        'tbl_5',
+  idempotencyKey: const Uuid().v4(), // prevents duplicate orders on network retry
 );
+
+// Update order status (invalid transitions return 409)
+await xeboki.pos.updateOrderStatus(
+  'ord_abc123',
+  status: 'confirmed',
+  note:   'Confirmed by kitchen',
+);
+
+// Cancel — inventory automatically restored
+await xeboki.pos.updateOrderStatus('ord_abc123', status: 'cancelled');
 ```
+
+**Order status machine:** `pending → confirmed → processing → ready → completed` (any non-terminal → `cancelled`)
 
 **`Order` fields**
 
-| Field           | Type     | Description                                              |
-|-----------------|----------|----------------------------------------------------------|
-| `id`            | `String` | Unique order ID                                          |
-| `orderNumber`   | `String` | Human-readable order number                              |
-| `status`        | `String` | `pending`, `processing`, `completed`, `cancelled`, `refunded` |
-| `items`         | `List<OrderItem>` | Line items                                      |
-| `subtotal`      | `double` | Pre-tax, pre-discount total                              |
-| `tax`           | `double` | Tax amount                                               |
-| `discount`      | `double` | Discount applied                                         |
-| `total`         | `double` | Final charged amount                                     |
-| `locationId`    | `String` | Location that processed the order                        |
-| `employeeId`    | `String` | Employee who processed the order                         |
-| `paymentMethod` | `String` | Payment method used                                      |
-| `createdAt`     | `String` | ISO 8601 timestamp                                       |
+| Field          | Type     | Description                                                            |
+|----------------|----------|------------------------------------------------------------------------|
+| `id`           | `String` | Unique order ID                                                        |
+| `orderNumber`  | `String` | Human-readable order number                                            |
+| `status`       | `String` | `pending`, `confirmed`, `processing`, `ready`, `completed`, `cancelled`|
+| `orderType`    | `String` | `pickup`, `delivery`, `dine_in`, `takeaway`                            |
+| `items`        | `List<OrderItem>` | Line items                                                    |
+| `subtotal`     | `double` | Pre-tax, pre-discount total                                            |
+| `tax`          | `double` | Tax amount                                                             |
+| `discount`     | `double` | Discount applied                                                       |
+| `total`        | `double` | Final charged amount                                                   |
+| `paidTotal`    | `double` | Amount paid so far                                                     |
+| `reference`    | `String?`| Your external order ID                                                 |
+| `locationId`   | `String` | Location that processed the order                                      |
+| `createdAt`    | `String` | ISO 8601 timestamp                                                     |
 
-#### Products
+#### Payments
+
+The API records payments — it does not process card charges. Collect payment in your app, then record the result.
 
 ```dart
-// List products
-final products = await xeboki.pos.listProducts(
+// Record a full payment
+final payment = await xeboki.pos.payOrder(
+  'ord_abc123',
+  method:    'card',
+  amount:    42.50,
+  reference: 'pi_stripe_abc',  // optional — gateway transaction ID
+);
+
+// Split payment — add partial amounts one at a time
+final first = await xeboki.pos.addPayment(
+  'ord_abc123',
+  method: 'cash',
+  amount: 20.00,
+);
+print('Remaining: \$${first.remainingAmount}');
+
+final second = await xeboki.pos.addPayment(
+  'ord_abc123',
+  method:    'card',
+  amount:    22.50,
+  reference: 'pi_stripe_xyz',
+);
+print('Fully paid: ${second.isFullyPaid}');  // true → order auto-completes
+
+// List all payments on an order
+final payments = await xeboki.pos.listPayments('ord_abc123');
+```
+
+#### Customers
+
+```dart
+// Search customers
+final customers = await xeboki.pos.listCustomers(search: 'jane', limit: 20);
+
+// Get a single customer (includes loyalty points, store credit)
+final customer = await xeboki.pos.getCustomer('cust_abc');
+
+// Create a customer
+final newCustomer = await xeboki.pos.createCustomer(
+  name:  'Jane Doe',
+  email: 'jane@example.com',
+  phone: '+1-555-0100',
+);
+```
+
+#### Appointments
+
+For service-based businesses — salons, gyms, repair shops, spas.
+
+```dart
+// List appointments
+final appts = await xeboki.pos.listAppointments(
+  locationId: 'loc_abc',
+  status:     'confirmed',  // pending|confirmed|in_progress|completed|cancelled|no_show
+  date:       '2026-04-15',
+  staffId:    'staff_xyz',
+);
+
+// Book an appointment
+final newAppt = await xeboki.pos.createAppointment(
+  locationId:      'loc_abc',
+  customerId:      'cust_xyz',
+  serviceId:       'prod_haircut',
+  staffId:         'staff_xyz',
+  startTime:       '2026-04-15T14:00:00Z',
+  durationMinutes: 60,
+  notes:           'Trim only',
+);
+
+// Update appointment status
+// When status → 'completed', a POS order is auto-created for sales reporting
+await xeboki.pos.updateAppointmentStatus('appt_abc', status: 'confirmed');
+```
+
+#### Staff
+
+```dart
+// List active staff
+final staff = await xeboki.pos.listStaff(locationId: 'loc_abc', isActive: true);
+
+// Get a staff member
+final member = await xeboki.pos.getStaffMember('staff_abc');
+```
+
+#### Discounts
+
+```dart
+// List active discount rules
+final discounts = await xeboki.pos.listDiscounts(
   locationId: 'loc_abc',
   isActive:   true,
-  search:     'espresso',
-  limit:      100,
 );
 
-// Create a product
-final product = await xeboki.pos.createProduct(
-  name:           'Flat White',
-  price:          4.50,
-  locationId:     'loc_abc',
-  taxRate:        0.10,
-  trackInventory: true,
-  categoryId:     'cat_coffee',
+// Validate a discount code before applying
+final result = await xeboki.pos.validateDiscount(
+  code:       'SUMMER20',
+  orderTotal: 85.00,
+  locationId: 'loc_abc',
+);
+if (result.valid) {
+  print('${result.type}: ${result.value}, saves: \$${result.discountAmount}');
+} else {
+  print(result.reason);  // expired | not_found | minimum_not_met
+}
+```
+
+#### Tables
+
+```dart
+// List tables
+final tables = await xeboki.pos.listTables(
+  locationId: 'loc_abc',
+  status:     'available',  // available|occupied|reserved|cleaning
 );
 
-// Update a product
-final updated = await xeboki.pos.updateProduct(
-  'prod_abc',
-  price: 4.75,
-);
+// Update table status
+await xeboki.pos.updateTable('tbl_5', status: 'occupied');
+```
+
+#### Gift Cards
+
+```dart
+// Look up a gift card by code
+final card = await xeboki.pos.getGiftCard('GC-XYZ-123');
+print('Balance: \$${card.balance}, active: ${card.isActive}');
 ```
 
 #### Inventory
@@ -172,7 +313,7 @@ final inventory = await xeboki.pos.listInventory(
 );
 
 // Adjust stock level
-final item = await xeboki.pos.updateInventory(
+await xeboki.pos.updateInventory(
   'inv_abc',
   quantity: 50,
   reason:   'restock',
@@ -180,22 +321,39 @@ final item = await xeboki.pos.updateInventory(
 );
 ```
 
-#### Customers
+#### Webhooks
 
 ```dart
-// Search customers
-final customers = await xeboki.pos.listCustomers(
-  search: 'jane',
-  limit:  20,
+// Register a webhook
+final webhook = await xeboki.pos.createWebhook(
+  url:    'https://yourserver.com/xeboki/events',
+  events: ['order.created', 'order.completed', 'order.cancelled'],
 );
+print(webhook.secret);  // whsec_... — shown ONCE, store it securely
 
-// Create a customer
-final customer = await xeboki.pos.createCustomer(
-  name:  'Jane Doe',
-  email: 'jane@example.com',
-  phone: '+1-555-0100',
-);
+// List registered webhooks
+final webhooks = await xeboki.pos.listWebhooks();
+
+// Delete a webhook
+await xeboki.pos.deleteWebhook('wh_abc123');
 ```
+
+**Verifying signatures in Dart**
+
+```dart
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+
+bool verifyWebhook(String secret, String body, String signature) {
+  final key  = utf8.encode(secret);
+  final data = utf8.encode(body);
+  final hmac = Hmac(sha256, key);
+  final expected = 'sha256=${hmac.convert(data)}';
+  return expected == signature;
+}
+```
+
+**Available POS events:** `order.created` · `order.updated` · `order.completed` · `order.cancelled` · `order.payment_added` · `order.paid` · `appointment.created` · `appointment.updated` · `appointment.completed` · `appointment.cancelled` · `inventory.low_stock`
 
 #### Sales Report
 
