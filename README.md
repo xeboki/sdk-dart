@@ -1,6 +1,10 @@
-# xeboki
+<p align="center">
+  <img src="https://raw.githubusercontent.com/xeboki/ordering-app/main/assets/images/xe_logo.svg" alt="Xeboki" width="120" />
+</p>
 
-Official Dart and Flutter SDK for the [Xeboki developer API](https://developers.xeboki.com). Supports all Dart platforms — Flutter (iOS, Android, Web, Desktop) and pure Dart server/CLI.
+<h1 align="center">Xeboki SDK for Dart & Flutter</h1>
+
+<p align="center">Official Dart and Flutter SDK for the <a href="https://developers.xeboki.com">Xeboki developer API</a>. Supports all Dart platforms — Flutter (iOS, Android, Web, Desktop) and pure Dart server/CLI.</p>
 
 [![pub.dev](https://img.shields.io/pub/v/xeboki)](https://pub.dev/packages/xeboki)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
