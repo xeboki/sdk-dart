@@ -529,6 +529,118 @@ final release = await xeboki.launchpad.createRelease(
 
 ---
 
+### `developer` — API Keys & Webhooks
+
+Manage the API keys and webhook endpoints for your account programmatically.
+Requires a POS JWT issued to an admin-role user.
+
+```dart
+// ── API Keys ─────────────────────────────────────────────────────────────────
+
+// List all keys
+final keys = await xeboki.developer.listApiKeys();
+
+// Create a key — full key is shown ONCE, store it securely
+final newKey = await xeboki.developer.createApiKey(
+  name:   'Mobile Storefront',
+  scopes: ['pos:read', 'orders:write', 'customers:read'],
+);
+print('Save this key now: ${newKey.key}');   // xbk_live_...
+
+// Revoke a key immediately
+await xeboki.developer.revokeApiKey(keyId);
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+
+// Register an endpoint
+final hook = await xeboki.developer.registerWebhook(
+  url:    'https://yourserver.com/webhooks/xeboki',
+  events: ['order.created', 'order.status_changed'],
+  description: 'Production webhook',
+);
+print('Signing secret prefix: ${hook.secretPrefix}');
+
+// List registered endpoints
+final hooks = await xeboki.developer.listWebhooks();
+
+// Send a test event (returns 202 — delivery is async)
+await xeboki.developer.testWebhook(hook.id, event: 'order.created');
+
+// Remove an endpoint
+await xeboki.developer.deleteWebhook(hook.id);
+
+// Discover available scopes and events
+final scopes = await xeboki.developer.listScopes();
+final events = await xeboki.developer.listEvents();
+```
+
+**Verifying webhook signatures in Dart**
+
+```dart
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+
+bool verifyXebokiWebhook(String secret, String rawBody, String header) {
+  final key      = utf8.encode(secret);
+  final data     = utf8.encode(rawBody);
+  final expected = 'sha256=${Hmac(sha256, key).convert(data)}';
+  return expected == header;   // header = request.headers['X-Xeboki-Signature']
+}
+```
+
+---
+
+### Firestore-direct path (ordering apps)
+
+The official Xeboki Ordering App reads catalog, orders, and real-time updates
+**directly from the subscriber's Firestore** — skipping the REST API entirely
+for reads. This gives sub-100 ms latency and real-time push updates.
+
+To build a similar app with the SDK:
+
+```dart
+// Step 1 — get the subscriber's Firebase config + custom auth token
+final fbConfig = await xeboki.ordering.getFirebaseConfig();
+
+// Step 2 — initialise a secondary Firebase app
+await Firebase.initializeApp(
+  name: 'ordering_pro',
+  options: FirebaseOptions(
+    apiKey:            fbConfig.apiKey,
+    projectId:         fbConfig.projectId,
+    appId:             fbConfig.appId,
+    authDomain:        fbConfig.authDomain,
+    storageBucket:     fbConfig.storageBucket,
+    messagingSenderId: fbConfig.messagingSenderId,
+  ),
+);
+final secondaryApp = Firebase.app('ordering_pro');
+
+// Step 3 — sign in with the custom token
+await FirebaseAuth.instanceFor(app: secondaryApp)
+    .signInWithCustomToken(fbConfig.customToken!);
+
+// Step 4 — read Firestore directly
+final db = FirebaseFirestore.instanceFor(app: secondaryApp);
+
+// Real-time order tracking — no polling needed
+db.collection('orders').doc(orderId).snapshots().listen((snap) {
+  final order = snap.data();
+  print('Status: ${order?['status']}');
+});
+
+// Catalog
+final categories = await db.collection('categories')
+    .where('is_active', isEqualTo: true)
+    .orderBy('sort_order')
+    .get();
+```
+
+For simpler integrations without a Firebase dependency, all REST methods
+(`listProducts`, `listOrders`, etc.) remain available on `xeboki.ordering`.
+
+---
+
 ## Error Handling
 
 All SDK methods throw `XebokiException` on non-2xx HTTP responses.

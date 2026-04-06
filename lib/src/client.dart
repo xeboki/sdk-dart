@@ -7,6 +7,7 @@ import 'products/analytics.dart';
 import 'products/account.dart';
 import 'products/launchpad.dart';
 import 'products/ordering.dart';
+import 'products/developer.dart';
 
 export 'error.dart';
 export 'http.dart' show RateLimitInfo;
@@ -18,6 +19,7 @@ export 'products/analytics.dart';
 export 'products/account.dart';
 export 'products/launchpad.dart';
 export 'products/ordering.dart';
+export 'products/developer.dart';
 
 /// Main entry point for the Xeboki SDK.
 ///
@@ -31,6 +33,10 @@ export 'products/ordering.dart';
 /// final products = await xeboki.ordering.listProducts(limit: 20);
 /// final auth = await xeboki.ordering.loginCustomer(email: '...', password: '...');
 ///
+/// // Manage API keys and webhooks (admin only)
+/// final newKey = await xeboki.developer.createApiKey(
+///   name: 'Mobile Storefront', scopes: ['pos:read']);
+///
 /// print(xeboki.lastRateLimit?.remaining);
 /// ```
 class XebokiClient {
@@ -42,6 +48,7 @@ class XebokiClient {
   late final AnalyticsClient analytics;
   late final AccountClient account;
   late final LaunchpadClient launchpad;
+  late final DeveloperClient developer;
 
   final XebokiHttpClient _http;
   RateLimitInfo? _lastRateLimit;
@@ -62,6 +69,7 @@ class XebokiClient {
     analytics = AnalyticsClient(_http, onRateLimit);
     account   = AccountClient(_http, onRateLimit);
     launchpad = LaunchpadClient(_http, onRateLimit);
+    developer = DeveloperClient(_http, onRateLimit);
   }
 
   /// Release underlying HTTP client resources.
