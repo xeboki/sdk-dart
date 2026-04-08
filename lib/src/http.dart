@@ -2,6 +2,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'error.dart';
 
+const _kSubscriptionCodes = {
+  'subscription_required',
+  'free_plan_not_supported',
+  'ordering_app_not_in_plan',
+};
+
 class RateLimitInfo {
   final int limit;
   final int remaining;
@@ -79,6 +85,27 @@ class XebokiHttpClient {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      // Check for structured subscription 403 before generic error handling.
+      if (response.statusCode == 403) {
+        try {
+          final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+          final detail = decoded['detail'];
+          if (detail is Map<String, dynamic>) {
+            final code = detail['code']?.toString() ?? '';
+            if (_kSubscriptionCodes.contains(code)) {
+              throw XebokiSubscriptionError(
+                code: code,
+                message: detail['message']?.toString() ??
+                    'Subscription access blocked.',
+                requestId: requestId,
+              );
+            }
+          }
+        } catch (e) {
+          if (e is XebokiSubscriptionError) rethrow;
+        }
+      }
+
       String message = 'HTTP ${response.statusCode}';
       int? retryAfter;
       try {
