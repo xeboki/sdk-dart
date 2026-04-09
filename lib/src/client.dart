@@ -8,6 +8,7 @@ import 'products/account.dart';
 import 'products/launchpad.dart';
 import 'products/ordering.dart';
 import 'products/developer.dart';
+import 'products/xecode.dart';
 
 export 'error.dart';
 export 'http.dart' show RateLimitInfo;
@@ -20,6 +21,7 @@ export 'products/account.dart';
 export 'products/launchpad.dart';
 export 'products/ordering.dart';
 export 'products/developer.dart';
+export 'products/xecode.dart';
 
 /// Main entry point for the Xeboki SDK.
 ///
@@ -49,6 +51,7 @@ class XebokiClient {
   late final AccountClient account;
   late final LaunchpadClient launchpad;
   late final DeveloperClient developer;
+  late final CodeClient code;
 
   final XebokiHttpClient _http;
   RateLimitInfo? _lastRateLimit;
@@ -70,6 +73,7 @@ class XebokiClient {
     account   = AccountClient(_http, onRateLimit);
     launchpad = LaunchpadClient(_http, onRateLimit);
     developer = DeveloperClient(_http, onRateLimit);
+    code      = CodeClient(_http, onRateLimit);
   }
 
   /// Release underlying HTTP client resources.
